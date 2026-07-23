@@ -67,14 +67,16 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
         final key = DateTime(day.year, day.month, day.day);
         map.putIfAbsent(key, () => []).add(event);
       }
+      // Sort events for each day by start time
+      for (var day in map.keys) {
+        map[day]!.sort((a, b) => a.dates.start.compareTo(b.dates.start));
+      }
     }
     return map;
   }
 
   @override
   Widget build(BuildContext context) {
-    final eventMap = _getEventMap();
-
     final firstDayOfMonth = DateTime(_currentDate.year, _currentDate.month, 1);
     final daysInMonth = DateUtils.getDaysInMonth(
       _currentDate.year,
@@ -99,6 +101,8 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
     while (days.length % 7 != 0) {
       days.add(days.last.add(const Duration(days: 1)));
     }
+
+    final eventMap = _getEventMap();
 
     return Column(
       children: [
@@ -184,7 +188,10 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
         final day = days[index];
         final isToday = DateUtils.isSameDay(day, DateTime.now());
         final isCurrentMonth = day.month == _currentDate.month;
-        final events = eventMap[DateTime(day.year, day.month, day.day)] ?? [];
+        final List<CalendarEvent> dayEvents = [
+          ...(eventMap[DateTime(day.year, day.month, day.day)] ??
+              const <CalendarEvent>[]),
+        ];
         final theme = Theme.of(context);
         final dateColor = isCurrentMonth
             ? (isToday
@@ -198,14 +205,13 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
               MaterialPageRoute(
                 builder: (_) => CalendarDay(
                   date: day,
-                  events: events,
+                  events: dayEvents,
                   onEventSelected: widget.onEventSelected,
                 ),
               ),
             );
           },
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
               Align(
                 alignment: Alignment.topCenter,
@@ -217,74 +223,98 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
                   ),
                 ),
               ),
-              for (var event in events) ...[
-                if (events.indexOf(event) > 0) 
-                  const SizedBox(height: 2),
-                Builder(
-                  builder: (context) {
-                    final isFirstDay = DateUtils.isSameDay(event.dates.start, day);
-                    final isLastDay = DateUtils.isSameDay(event.dates.end, day);
+              if (dayEvents.isNotEmpty)
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final cellWidth = constraints.maxWidth;
 
-                    return Expanded(
-                      child: Tooltip(
-                        message: '${event.title}\n${event.description}',
-                        preferBelow: false,
-                        child: Container(
-                          clipBehavior: Clip.hardEdge,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            borderRadius: isFirstDay
-                              ? BorderRadius.horizontal(left: Radius.circular(8))
-                              : isLastDay
-                                ? BorderRadius.horizontal(right: Radius.circular(8))
-                                : null,
-                          ),
-                          // Use LayoutBuilder to get cell width
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final cellWidth = constraints.maxWidth;
-                              // Strip the time part to avoid daylight saving time (DST) 
-                              // or a time zone transition error
-                              final dayIndex =
-                                  DateTime(day.year, day.month, day.day)
-                                      .difference(
-                                        DateTime(
-                                          event.dates.start.year,
-                                          event.dates.start.month,
-                                          event.dates.start.day,
-                                        ),
-                                      )
-                                      .inDays;
-                              final shift = dayIndex * cellWidth;
+                      final overlappingEvents = <CalendarEvent>[];
 
-                              return Transform.translate(
-                                offset: Offset(-shift, 0),
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    event.title,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: theme.colorScheme.onPrimary,
-                                      height: 1,
-                                    ),
-                                    maxLines: 1,
-                                    softWrap: false, 
-                                    overflow: TextOverflow.visible,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    );
-                  }
+                      for (var event in dayEvents) {
+                        if (event.dates.start.isBefore(day.add(const Duration(days: 1))) &&
+                            event.dates.end.isAfter(day)) {
+                          overlappingEvents.add(event);
+                        }
+                      }
+
+                      return Column(
+                        spacing: 2,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var event in dayEvents) 
+                            _buildEventTile(
+                              context: context,
+                              day: day,
+                              event: event,
+                              cellWidth: cellWidth,
+                            ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
-              ],
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildEventTile({
+    required BuildContext context,
+    required DateTime day,
+    required CalendarEvent event,
+    required double cellWidth,
+  }) {
+    final theme = Theme.of(context);
+    final dayIndex =
+        DateTime(day.year, day.month, day.day)
+            .difference(
+              DateTime(
+                event.dates.start.year,
+                event.dates.start.month,
+                event.dates.start.day,
+              ),
+            )
+            .inDays;
+    final shift = dayIndex * cellWidth;
+    final isFirstDay = DateUtils.isSameDay(event.dates.start, day);
+    final isLastDay = DateUtils.isSameDay(event.dates.end, day);
+    final isSingleDay = isFirstDay && isLastDay;
+
+    return Tooltip(
+      message: '${event.title}\n${event.description}',
+      preferBelow: false,
+      child: Container(
+        clipBehavior: Clip.hardEdge,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primary,
+          borderRadius: isSingleDay
+              ? BorderRadius.circular(8)
+              : isFirstDay
+                  ? const BorderRadius.horizontal(left: Radius.circular(8))
+                  : isLastDay
+                      ? const BorderRadius.horizontal(right: Radius.circular(8))
+                      : null,
+        ),
+        child: Transform.translate(
+          offset: Offset(-shift, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              event.title,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onPrimary,
+                height: 1,
+              ),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.visible,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

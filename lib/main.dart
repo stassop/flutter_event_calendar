@@ -32,16 +32,16 @@ final events = [
   ),
 
   // 3. THE 8-DAY ANCHOR EVENT (Figure to last exactly 8 days)
-  // Event(
-  //   id: 'b8b3f23a-7a57-4f4a-939e-2936791d2146',
-  //   title: 'The Odyssey Project: 8-Day Transatlantic Writers Retreat',
-  //   description: 'An epic eight-day maritime voyage dedicated to advanced world-building workshops '
-  //       'and speculative fiction panels across the Atlantic.',
-  //   dates: DateTimeRange(
-  //     start: DateTime(2026, 7, 20, 10, 0), // Day 1: July 20, 10:00 AM
-  //     end: DateTime(2026, 7, 28, 10, 0),  // Day 9: July 28, 10:00 AM (Exactly 8 days)
-  //   ),
-  // ),
+  Event(
+    id: 'b8b3f23a-7a57-4f4a-939e-2936791d2146',
+    title: 'The Odyssey Project: 8-Day Transatlantic Writers Retreat',
+    description: 'An epic eight-day maritime voyage dedicated to advanced world-building workshops '
+        'and speculative fiction panels across the Atlantic.',
+    dates: DateTimeRange(
+      start: DateTime(2026, 7, 20, 10, 0), // Day 1: July 20, 10:00 AM
+      end: DateTime(2026, 7, 28, 10, 0),  // Day 9: July 28, 10:00 AM (Exactly 8 days)
+    ),
+  ),
 ];
 
 void main() {
