@@ -359,10 +359,10 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final cellWidth = constraints.maxWidth;
-                      final cellHeight = constraints.maxHeight;
+                      final dayHeight = constraints.maxHeight;
+                      final eventWidth = constraints.maxWidth;
                       // Event height is determined by the number of lanes, plus spacing
-                      final eventHeight = (cellHeight - (dayEvents.length - 1) * 2) / dayEvents.length;
+                      final eventHeight = (dayHeight - (dayEvents.length - 1) * 2) / dayEvents.length;
 
                       return Column(
                         spacing: 2,
@@ -373,7 +373,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
                                 context: context,
                                 day: day,
                                 event: event,
-                                cellWidth: cellWidth,
+                                eventWidth: eventWidth,
                                 eventHeight: eventHeight,
                               )
                             else
@@ -394,7 +394,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
     required BuildContext context,
     required DateTime day,
     required CalendarEvent event,
-    required double cellWidth,
+    required double eventWidth,
     required double eventHeight,
   }) {
     final theme = Theme.of(context);
@@ -408,7 +408,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
               ),
             )
             .inDays;
-    final shift = dayIndex * cellWidth;
+    final textOffset = dayIndex * eventWidth;
     final isFirstDay = DateUtils.isSameDay(event.dates.start, day);
     final isLastDay = DateUtils.isSameDay(event.dates.end, day);
     final isSingleDay = isFirstDay && isLastDay;
@@ -459,7 +459,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
                       : null,
         ),
         child: Transform.translate(
-          offset: Offset(-shift, 0),
+          offset: Offset(-textOffset, 0),
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -513,12 +513,26 @@ class CalendarDay extends StatelessWidget {
                   _buildHourGrid(context),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Stack(
-                      children: [
-                        _buildEventGrid(context),
-                        for (var event in sortedEvents)
-                          _buildEventTile(context, event),
-                      ],
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final dayWidth = constraints.maxWidth;
+                        // Event width based on day's events plus spacing
+                        final eventWidth = (dayWidth - (events.length - 1) * 2) / events.length;
+
+                        return Stack(
+                          children: [
+                            _buildEventGrid(context),
+                            for (var event in sortedEvents)
+                              // Left offset for each event based on its index in the sorted list
+                              _buildEventTile(
+                                context: context,
+                                event: event,
+                                eventWidth: eventWidth,
+                                index: sortedEvents.indexOf(event),
+                              ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -532,8 +546,24 @@ class CalendarDay extends StatelessWidget {
 
   Widget _buildHourGrid(BuildContext context) {
     final theme = Theme.of(context);
+
+    final now = DateTime.now();
+    final isToday = DateUtils.isSameDay(date, now);
+    // Past day check calculated once for efficiency
+    final isPastDay = date.isBefore(DateTime(now.year, now.month, now.day));
+
     return Column(
       children: List.generate(24, (hour) {
+        // Evaluate current and past state for THIS specific hour
+        final isCurrentHour = isToday && hour == now.hour;
+        final isPastHour = isPastDay || (isToday && hour < now.hour);
+
+        final hourColor = isCurrentHour
+            ? theme.colorScheme.onPrimaryContainer
+            : isPastHour
+                ? theme.disabledColor
+                : theme.textTheme.bodyLarge?.color;
+
         return SizedBox(
           height: hourHeight,
           child: Align(
@@ -544,8 +574,9 @@ class CalendarDay extends StatelessWidget {
                 TimeOfDay(hour: hour, minute: 0).format(context),
                 textAlign: TextAlign.right,
                 style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.hintColor,
-                  height: 1, 
+                  fontWeight: isCurrentHour ? FontWeight.bold : null,
+                  color: hourColor,
+                  height: 1,
                 ),
               ),
             ),
@@ -570,7 +601,12 @@ class CalendarDay extends StatelessWidget {
     );
   }
 
-  Widget _buildEventTile(BuildContext context, CalendarEvent event) {
+  Widget _buildEventTile({
+    required BuildContext context, 
+    required CalendarEvent event,
+    required double eventWidth,
+    required int index,
+  }) {
     final theme = Theme.of(context);
     // If the event starts before the current date, it spans from midnight
     final isStartDay = DateUtils.isSameDay(event.dates.start, date);
@@ -585,18 +621,24 @@ class CalendarDay extends StatelessWidget {
         : 24.0;
 
     final top = startHourDecimal * hourHeight;
+    final left = index * (eventWidth + 2); // 2 pixels spacing between events
 
-    final height =
-        ((endHourDecimal - startHourDecimal).clamp(0.5, 24.0)) * hourHeight;
+    final height = ((endHourDecimal - startHourDecimal).clamp(0.5, 24.0)) * hourHeight;
+
+    final formattedDateTime = '${DateFormat.MMMd().add_j().format(event.dates.start)} - '
+        '${DateFormat.MMMd().add_j().format(event.dates.end)}';
 
     return Positioned(
       top: top,
+      left: left,
       child: InkWell(
         onTap: () {
           onEventSelected?.call(event);
         },
         child: Container(
           height: height,
+          width: eventWidth,
+          clipBehavior: Clip.hardEdge,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: theme.colorScheme.primaryContainer,
@@ -611,12 +653,25 @@ class CalendarDay extends StatelessWidget {
             children: [
               Text(
                 event.title,
+                softWrap: true,
                 style: theme.textTheme.titleSmall?.copyWith(
                   color: theme.colorScheme.onPrimaryContainer,
                 ),
               ),
+              const SizedBox(height: 8),
+              Text(
+                // Show dates and times in a concise format
+                formattedDateTime,
+                softWrap: true,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
               Text(
                 event.description,
+                softWrap: true,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onPrimaryContainer,
                 ),
