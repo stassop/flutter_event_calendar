@@ -46,32 +46,98 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
   }
 
   // Pre-groups events by date string for O(1) lookup in the grid
-  Map<DateTime, List<CalendarEvent>> _getEventMap() {
-    final map = <DateTime, List<CalendarEvent>>{};
-    for (var event in widget.events) {
-      final start = DateTime(
+  Map<DateTime, List<CalendarEvent?>> _getEventLaneMap() {
+    // Sort events chronologically by start date
+    final sortedEvents = List<CalendarEvent>.from(widget.events)
+      ..sort((a, b) => a.dates.start.compareTo(b.dates.start));
+
+    final map = <DateTime, List<CalendarEvent?>>{};
+    if (sortedEvents.isEmpty) return map;
+
+    // Trackers for the current overlapping group (cluster) of events
+    DateTime? clusterEndDay;
+    final clusterDays = <DateTime>{};
+    int maxLaneInCluster = 0;
+    final laneEnds = <DateTime>[]; // Tracks when each lane becomes free
+
+    // Helper to pad all days in the current cluster to have the same number of lanes
+    void padCluster() {
+      for (final day in clusterDays) {
+        final dayLanes = map[day]!;
+        // Fill missing lanes at the end with nulls
+        while (dayLanes.length <= maxLaneInCluster) {
+          dayLanes.add(null);
+        }
+      }
+    }
+
+    for (final event in sortedEvents) {
+      // Strip out the time to compare just the dates
+      final startDay = DateTime(
         event.dates.start.year,
         event.dates.start.month,
         event.dates.start.day,
       );
-      final end = DateTime(
+      final endDay = DateTime(
         event.dates.end.year,
         event.dates.end.month,
         event.dates.end.day,
       );
+
+      // If this event starts after the current cluster ends, finalize the old cluster
+      if (clusterEndDay != null && startDay.isAfter(clusterEndDay)) {
+        padCluster();
+        clusterDays.clear();
+        laneEnds.clear(); // Reset lanes for the new, disconnected cluster
+        maxLaneInCluster = 0;
+      }
+
+      // Extend the cluster's max end date if this event reaches further
+      if (clusterEndDay == null || endDay.isAfter(clusterEndDay)) {
+        clusterEndDay = endDay;
+      }
+
+      // Find the first available lane (where the event starts after the lane is free)
+      int laneIndex = laneEnds.indexWhere(
+        (endTime) => !event.dates.start.isBefore(endTime),
+      );
+
+      if (laneIndex == -1) {
+        // No free lanes found, open a new one
+        laneEnds.add(event.dates.end);
+        laneIndex = laneEnds.length - 1;
+      } else {
+        // Re-use the existing lane and update its new end time
+        laneEnds[laneIndex] = event.dates.end;
+      }
+
+      // Track the maximum lane used in this cluster
+      if (laneIndex > maxLaneInCluster) {
+        maxLaneInCluster = laneIndex;
+      }
+
+      // Add the event to the map for every day it spans
       for (
-        DateTime day = start;
-        !day.isAfter(end);
+        DateTime day = startDay;
+        !day.isAfter(endDay);
         day = day.add(const Duration(days: 1))
       ) {
-        final key = DateTime(day.year, day.month, day.day);
-        map.putIfAbsent(key, () => []).add(event);
-      }
-      // Sort events for each day by start time
-      for (var day in map.keys) {
-        map[day]!.sort((a, b) => a.dates.start.compareTo(b.dates.start));
+        clusterDays.add(day); // Track the day so we can pad it later
+        
+        final dayLanes = map.putIfAbsent(day, () => <CalendarEvent?>[]);
+
+        // Ensure the list is long enough to place the event in its lane
+        while (dayLanes.length <= laneIndex) {
+          dayLanes.add(null);
+        }
+
+        dayLanes[laneIndex] = event;
       }
     }
+
+    // 6. Pad the final cluster after the loop finishes
+    padCluster();
+
     return map;
   }
 
@@ -102,22 +168,33 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
       days.add(days.last.add(const Duration(days: 1)));
     }
 
-    final eventMap = _getEventMap();
+    final eventLaneMap = _getEventLaneMap();
 
-    return Column(
-      children: [
-        _buildHeader(context),
-        const SizedBox(height: 16),
-        _buildWeekdayLabels(context),
-        const SizedBox(height: 8),
-        _buildCalendarGrid(context, days, eventMap),
-      ],
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        children: [
+          _buildHeader(context),
+          const SizedBox(height: 16),
+          _buildWeekdayLabels(context),
+          const SizedBox(height: 8),
+          _buildCalendarGrid(context, days, eventLaneMap),
+        ],
+      ),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context).toString();
+
+    final headerTextStyle = theme.textTheme.titleLarge;
+    final compactDropdownDecoration = const InputDecorationTheme(
+      isDense: true,
+      contentPadding: EdgeInsets.zero,
+      border: InputBorder.none,
+    );
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -134,9 +211,62 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
             _notifyDatesChanged();
           },
         ),
-        Text(
-          DateFormat.yMMMM(locale).format(_currentDate),
-          style: theme.textTheme.titleLarge,
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: DropdownMenu<int>(
+                  // Omitted expandedInsets to let width fit content automatically
+                  textStyle: headerTextStyle,
+                  inputDecorationTheme: compactDropdownDecoration,
+                  initialSelection: _currentDate.month,
+                  onSelected: (month) {
+                    if (month != null) {
+                      setState(
+                        () => _currentDate = DateTime(_currentDate.year, month, 1),
+                      );
+                      _notifyDatesChanged();
+                    }
+                  },
+                  dropdownMenuEntries: List.generate(
+                    12,
+                    (index) => DropdownMenuEntry(
+                      value: index + 1,
+                      label: DateFormat.MMM(
+                        locale,
+                      ).format(DateTime(_currentDate.year, index + 1)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: DropdownMenu<int>(
+                  // Omitted expandedInsets to let width fit content automatically
+                  textStyle: headerTextStyle,
+                  inputDecorationTheme: compactDropdownDecoration,
+                  initialSelection: _currentDate.year,
+                  onSelected: (year) {
+                    if (year != null) {
+                      setState(
+                        () => _currentDate = DateTime(year, _currentDate.month, 1),
+                      );
+                      _notifyDatesChanged();
+                    }
+                  },
+                  dropdownMenuEntries: List.generate(
+                    10,
+                    (index) => DropdownMenuEntry(
+                      value: _currentDate.year - 5 + index,
+                      label: (_currentDate.year - 5 + index).toString(),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         IconButton(
           icon: const Icon(Icons.chevron_right),
@@ -175,7 +305,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
   Widget _buildCalendarGrid(
     BuildContext context,
     List<DateTime> days,
-    Map<DateTime, List<CalendarEvent>> eventMap,
+    Map<DateTime, List<CalendarEvent?>> eventMap,
   ) {
     return GridView.builder(
       shrinkWrap: true,
@@ -188,7 +318,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
         final day = days[index];
         final isToday = DateUtils.isSameDay(day, DateTime.now());
         final isCurrentMonth = day.month == _currentDate.month;
-        final List<CalendarEvent> dayEvents = [
+        final dayEvents = [
           ...(eventMap[DateTime(day.year, day.month, day.day)] ??
               const <CalendarEvent>[]),
         ];
@@ -203,18 +333,20 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => CalendarDay(
-                  date: day,
-                  events: dayEvents,
-                  onEventSelected: widget.onEventSelected,
-                ),
+                builder: (_) { 
+                  final events = dayEvents.whereType<CalendarEvent>().toList();
+                  return CalendarDay(
+                    date: day,
+                    events: events,
+                    onEventSelected: widget.onEventSelected,
+                  ); 
+                },
               ),
             );
           },
           child: Column(
             children: [
-              Align(
-                alignment: Alignment.topCenter,
+              Center(
                 child: Text(
                   '${day.day}',
                   style: theme.textTheme.bodyLarge?.copyWith(
@@ -228,27 +360,24 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final cellWidth = constraints.maxWidth;
-
-                      final overlappingEvents = <CalendarEvent>[];
-
-                      for (var event in dayEvents) {
-                        if (event.dates.start.isBefore(day.add(const Duration(days: 1))) &&
-                            event.dates.end.isAfter(day)) {
-                          overlappingEvents.add(event);
-                        }
-                      }
+                      final cellHeight = constraints.maxHeight;
+                      // Event height is determined by the number of lanes, plus spacing
+                      final eventHeight = (cellHeight - (dayEvents.length - 1) * 2) / dayEvents.length;
 
                       return Column(
                         spacing: 2,
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          for (var event in dayEvents) 
-                            _buildEventTile(
-                              context: context,
-                              day: day,
-                              event: event,
-                              cellWidth: cellWidth,
-                            ),
+                          for (var event in dayEvents)
+                            if (event != null)
+                              _buildEventTile(
+                                context: context,
+                                day: day,
+                                event: event,
+                                cellWidth: cellWidth,
+                                eventHeight: eventHeight,
+                              )
+                            else
+                              SizedBox(height: eventHeight),
                         ],
                       );
                     },
@@ -266,6 +395,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
     required DateTime day,
     required CalendarEvent event,
     required double cellWidth,
+    required double eventHeight,
   }) {
     final theme = Theme.of(context);
     final dayIndex =
@@ -282,12 +412,42 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
     final isFirstDay = DateUtils.isSameDay(event.dates.start, day);
     final isLastDay = DateUtils.isSameDay(event.dates.end, day);
     final isSingleDay = isFirstDay && isLastDay;
+    // Calculate a font size based on the height. 
+    // Example: Takes up 80% of the container's height, clamped between 10 and 16.
+    final double dynamicFontSize = (eventHeight * 0.8).clamp(8.0, 16.0);
 
     return Tooltip(
-      message: '${event.title}\n${event.description}',
+      decoration: BoxDecoration(
+        color: theme.colorScheme.inverseSurface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      richMessage: TextSpan(
+        children: [
+          TextSpan(
+            text: '${event.title}\n',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onInverseSurface,
+            ),
+          ),
+          TextSpan(
+            text: '${DateFormat.yMMMd().format(event.dates.start)} - '
+              '${DateFormat.yMMMd().format(event.dates.end)}\n',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.onInverseSurface,
+            ),
+          ),
+          TextSpan(
+            text: event.description,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onInverseSurface,
+            ),
+          ),
+        ],
+      ),
       preferBelow: false,
       child: Container(
         clipBehavior: Clip.hardEdge,
+        height: eventHeight,
         decoration: BoxDecoration(
           color: theme.colorScheme.primary,
           borderRadius: isSingleDay
@@ -306,6 +466,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
               event.title,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onPrimary,
+                fontSize: dynamicFontSize,
                 height: 1,
               ),
               maxLines: 1,
@@ -340,7 +501,7 @@ class CalendarDay extends StatelessWidget {
       ..sort((a, b) => a.dates.start.compareTo(b.dates.start));
 
     return Scaffold(
-      appBar: AppBar(title: Text(DateFormat.yMMMMd(locale).format(date))),
+      appBar: AppBar(title: Text(DateFormat.yMMMd(locale).format(date))),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
