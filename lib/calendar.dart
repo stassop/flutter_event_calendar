@@ -135,7 +135,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
       }
     }
 
-    // 6. Pad the final cluster after the loop finishes
+    // Pad the final cluster after the loop finishes
     padCluster();
 
     return map;
@@ -620,6 +620,8 @@ class CalendarDay extends StatelessWidget {
         ? event.dates.end.hour + (event.dates.end.minute / 60.0)
         : 24.0;
 
+    final isSingleDay = isStartDay && isEndDay;
+
     final top = startHourDecimal * hourHeight;
     final left = index * (eventWidth + 2); // 2 pixels spacing between events
 
@@ -642,41 +644,44 @@ class CalendarDay extends StatelessWidget {
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: theme.colorScheme.primaryContainer,
-            borderRadius: isStartDay
-                ? BorderRadius.vertical(top: Radius.circular(8))
-                : isEndDay
-                    ? BorderRadius.vertical(bottom: Radius.circular(8))
-                    : null,
+            borderRadius: isSingleDay
+                ? BorderRadius.circular(8)
+                : isStartDay
+                    ? const BorderRadius.vertical(top: Radius.circular(8))
+                    : isEndDay
+                        ? const BorderRadius.vertical(bottom: Radius.circular(8))
+                        : null,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                event.title,
-                softWrap: true,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: theme.colorScheme.onPrimaryContainer,
+          child: OverflowBox(
+            alignment: Alignment.topLeft, // Fixes top-clipping by anchoring content to the top
+            maxHeight: double.infinity,   // Prevents RenderFlex overflow errors on small heights
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  event.title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                // Show dates and times in a concise format
-                formattedDateTime,
-                softWrap: true,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.w500,
+                const SizedBox(height: 8),
+                Text(
+                  formattedDateTime,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                event.description,
-                softWrap: true,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onPrimaryContainer,
+                const SizedBox(height: 8),
+                Text(
+                  event.description,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
