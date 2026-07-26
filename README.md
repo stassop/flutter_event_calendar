@@ -1,8 +1,5 @@
 # Flutter Calendar
-
-Building a Material 3 themeable event calendar widget.
-
-Photo by Chandan Chaurasia on Unsplash
+### Building a Material 3 themeable event calendar widget.
 
 ## Why Build a Calendar in Flutter?
 
@@ -12,7 +9,7 @@ To achieve this, we use standard Flutter widgets wherever possible. This avoids 
 
 We also focused on making the widget fully themeable. It integrates seamlessly with Flutter's Material 3 theming and adapts to your app's existing design system and color scheme.
 
-### UX/UI
+## UX/UI
 
 Events are displayed as bars spanning their scheduled dates, with the event title shown inside. Each day is divided into vertically scrollable time slots, making the interface mobile friendly.
 
