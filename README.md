@@ -12,15 +12,13 @@ To achieve this, we use standard Flutter widgets wherever possible. This avoids 
 
 We also focused on making the widget fully themeable. It integrates seamlessly with Flutter's Material 3 theming and adapts to your app's existing design system and color scheme.
 
-## UX/UI
+### UX/UI
 
 Events are displayed as bars spanning their scheduled dates, with the event title shown inside. Each day is divided into vertically scrollable time slots, making the interface mobile friendly.
 
 This layout provides a clear visual representation of each event's timeframe, makes overlapping events easy to identify, and allows users to quickly understand their schedule at a glance.
 
 ![Flutter Event Calendar](flutter_event_calendar.gif)
-
----
 
 ## Data Model
 
@@ -34,8 +32,6 @@ abstract interface class CalendarEvent {
   String get description;
 }
 ```
-
----
 
 ## Event Lanes
 
@@ -125,8 +121,6 @@ Map<DateTime, List<CalendarEvent?>> _getEventLaneMap() {
   return map;
 }
 ```
-
----
 
 ## Event Tile
 
@@ -225,8 +219,6 @@ Widget _buildEventTile({
 }
 ```
 
----
-
 ## Calendar Grid
 
 With the event lane map in place, building the calendar becomes straightforward. We iterate over the month days generated earlier and render each one using a seven-column `GridView`.
@@ -324,8 +316,6 @@ Widget _buildCalendarGrid(
 }
 ```
 
----
-
 ## Day View
 
 Implementing the `CalendarDay` view is relatively straightforward. We draw a vertical hour grid inside a `SingleChildScrollView`, creating a mobile-friendly interface with a clear visual representation of time.
@@ -421,8 +411,6 @@ Widget _buildEventTile({
 }
 ```
 
----
-
 ## Putting It All Together
 
 Our `Calendar` widget `build` method is surprisingly simple. We generate the calendar days based on the current date, then render the header and calendar grid.
@@ -487,8 +475,6 @@ Calendar<MyEvent>(
   onTapEvent: (event) => showEventDetails(event),
 )
 ```
-
----
 
 ## Conclusion
 
