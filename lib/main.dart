@@ -95,7 +95,7 @@ class HomeScreen extends StatelessWidget {
             // Handle date range changes here
             print('Selected date range: ${dateRange.start} to ${dateRange.end}');
           },
-          onEventSelected: (event) {
+          onTapEvent: (event) {
             // Handle event selection here
             print('Selected event: ${event.title}');
           },

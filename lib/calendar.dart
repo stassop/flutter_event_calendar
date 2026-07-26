@@ -10,17 +10,27 @@ abstract interface class CalendarEvent {
 
 class Calendar<T extends CalendarEvent> extends StatefulWidget {
   final List<CalendarEvent> events;
-  final DateTime? startDate;
+  final DateTime startDate;
+  final int startYear;
+  final int endYear;
   final ValueChanged<DateTimeRange>? onChanged;
-  final ValueChanged<CalendarEvent>? onEventSelected;
+  final ValueChanged<CalendarEvent>? onTapEvent;
 
-  const Calendar({
+  Calendar({
     super.key,
     this.events = const [],
-    this.startDate,
+    this.startYear = 1900,
+    this.endYear = 2100,
+    DateTime? startDate,
     this.onChanged,
-    this.onEventSelected,
-  });
+    this.onTapEvent,
+  }) : assert(startYear <= endYear, 'startYear must be less than or equal to endYear'),
+        startDate = startDate ?? DateTime.now();
+
+  List<int> get years => List.generate(
+        endYear - startYear + 1,
+        (index) => startYear + index,
+      );
 
   @override
   State<Calendar> createState() => _CalendarState();
@@ -32,7 +42,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
   @override
   void initState() {
     super.initState();
-    _currentDate = widget.startDate ?? DateTime.now();
+    _currentDate = widget.startDate;
     // Schedule callback after the first frame to avoid building during layout
     WidgetsBinding.instance.addPostFrameCallback((_) => _notifyDatesChanged());
   }
@@ -256,13 +266,12 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
                       _notifyDatesChanged();
                     }
                   },
-                  dropdownMenuEntries: List.generate(
-                    10,
-                    (index) => DropdownMenuEntry(
-                      value: _currentDate.year - 5 + index,
-                      label: (_currentDate.year - 5 + index).toString(),
-                    ),
-                  ),
+                  dropdownMenuEntries: widget.years.map((year) {
+                    return DropdownMenuEntry<int>(
+                      value: year,
+                      label: year.toString(),
+                    );
+                  }).toList(),
                 ),
               ),
             ],
@@ -338,7 +347,7 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
                   return CalendarDay(
                     date: day,
                     events: events,
-                    onEventSelected: widget.onEventSelected,
+                    onTapEvent: widget.onTapEvent,
                   ); 
                 },
               ),
@@ -483,13 +492,13 @@ class _CalendarState<T extends CalendarEvent> extends State<Calendar<T>> {
 class CalendarDay extends StatelessWidget {
   final DateTime date;
   final List<CalendarEvent> events;
-  final ValueChanged<CalendarEvent>? onEventSelected;
+  final ValueChanged<CalendarEvent>? onTapEvent;
 
   const CalendarDay({
     super.key,
     required this.date,
     required this.events,
-    this.onEventSelected,
+    this.onTapEvent,
   });
 
   static const double hourHeight = 64.0;
@@ -635,7 +644,7 @@ class CalendarDay extends StatelessWidget {
       left: left,
       child: InkWell(
         onTap: () {
-          onEventSelected?.call(event);
+          onTapEvent?.call(event);
         },
         child: Container(
           height: height,
