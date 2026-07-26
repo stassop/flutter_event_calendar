@@ -28,8 +28,8 @@ final events = [
     description: 'A comprehensive 3-day deep dive into the future of boutique hotels, '
         'zero-waste kitchens, and modern guest psychology.',
     dates: DateTimeRange(
-      start: DateTime(today.year, today.month, today.day + 1, 9, 0),  // Day 1: 9:00 AM
-      end: DateTime(today.year, today.month, today.day + 4, 23, 0), // Day 4: 11:00 PM
+      start: DateTime(today.year, today.month, today.day - 3, 9, 0),  // Day 1: 9:00 AM
+      end: DateTime(today.year, today.month, today.day, 23, 0), // Day 4: 11:00 PM
     ),
   ),
 
